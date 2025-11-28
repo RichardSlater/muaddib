@@ -775,3 +775,108 @@ test-muaddib-safe,1.0.0,"test"`
 		t.Errorf("expected 1 vulnerable package, got %d", len(result.VulnerablePackages))
 	}
 }
+
+func TestScanner_CheckPackageScripts_DetectsSetupBunPattern(t *testing.T) {
+	scanner := NewScanner(vuln.NewVulnDB(), true)
+
+	files := []*github.PackageFile{
+		{
+			RepoName: "test-org/test-repo",
+			Path:     "package.json",
+			Content: `{
+				"name": "test-package",
+				"version": "1.0.0",
+				"scripts": {
+					"postinstall": "node setup_bun.js",
+					"test": "jest"
+				}
+			}`,
+		},
+	}
+
+	malicious := scanner.CheckPackageScripts(files)
+
+	if len(malicious) != 1 {
+		t.Fatalf("expected 1 malicious script, got %d", len(malicious))
+	}
+
+	if malicious[0].ScriptName != "postinstall" {
+		t.Errorf("expected postinstall, got %s", malicious[0].ScriptName)
+	}
+
+	if malicious[0].Pattern != "setup_bun.js" {
+		t.Errorf("expected pattern 'setup_bun.js', got %s", malicious[0].Pattern)
+	}
+}
+
+func TestScanner_CheckPackageScripts_DetectsBunEnvironmentPattern(t *testing.T) {
+	scanner := NewScanner(vuln.NewVulnDB(), true)
+
+	files := []*github.PackageFile{
+		{
+			RepoName: "test-org/test-repo",
+			Path:     "package.json",
+			Content: `{
+				"name": "test-package",
+				"version": "1.0.0",
+				"scripts": {
+					"preinstall": "node bun_environment.js"
+				}
+			}`,
+		},
+	}
+
+	malicious := scanner.CheckPackageScripts(files)
+
+	if len(malicious) != 1 {
+		t.Fatalf("expected 1 malicious script, got %d", len(malicious))
+	}
+
+	if malicious[0].ScriptName != "preinstall" {
+		t.Errorf("expected preinstall, got %s", malicious[0].ScriptName)
+	}
+
+	if malicious[0].Pattern != "bun_environment.js" {
+		t.Errorf("expected pattern 'bun_environment.js', got %s", malicious[0].Pattern)
+	}
+}
+
+func TestScanner_CheckPackageScripts_DetectsAllMaliciousPatterns(t *testing.T) {
+	// Test that all three malicious patterns are detected when present
+	scanner := NewScanner(vuln.NewVulnDB(), true)
+
+	files := []*github.PackageFile{
+		{
+			RepoName: "test-org/test-repo",
+			Path:     "package.json",
+			Content: `{
+				"name": "test-package",
+				"version": "1.0.0",
+				"scripts": {
+					"postinstall": "node bundle.js",
+					"preinstall": "node setup_bun.js",
+					"prepare": "node bun_environment.js"
+				}
+			}`,
+		},
+	}
+
+	malicious := scanner.CheckPackageScripts(files)
+
+	if len(malicious) != 3 {
+		t.Fatalf("expected 3 malicious scripts, got %d", len(malicious))
+	}
+
+	// Verify all patterns were detected
+	patterns := make(map[string]bool)
+	for _, m := range malicious {
+		patterns[m.Pattern] = true
+	}
+
+	expectedPatterns := []string{"node bundle.js", "setup_bun.js", "bun_environment.js"}
+	for _, p := range expectedPatterns {
+		if !patterns[p] {
+			t.Errorf("expected pattern '%s' to be detected", p)
+		}
+	}
+}

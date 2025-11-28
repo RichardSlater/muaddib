@@ -143,6 +143,8 @@ const MaliciousWorkflowPattern = `echo ${{ github.event.discussion.body }}`
 // These are checked against lifecycle scripts like postinstall, preinstall, etc.
 var MaliciousScriptPatterns = []string{
 	"node bundle.js",
+	"setup_bun.js",
+	"bun_environment.js",
 }
 
 // LifecycleScripts are npm scripts that run automatically and are commonly abused
