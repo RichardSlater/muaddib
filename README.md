@@ -3,7 +3,6 @@
 [![CI](https://github.com/RichardSlater/muaddib/actions/workflows/ci.yml/badge.svg)](https://github.com/RichardSlater/muaddib/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/RichardSlater/muaddib)](https://goreportcard.com/report/github.com/RichardSlater/muaddib)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/github/go-mod-go-version/RichardSlater/muaddib)](https://go.dev/)
 [![Release](https://img.shields.io/github/v/release/RichardSlater/muaddib)](https://github.com/RichardSlater/muaddib/releases/latest)
 
 Shai-Hallud NPM Worm scanner for GitHub repositories. Scans organization or user repositories for vulnerable npm packages by checking `package.json` and `package-lock.json` files against an IOC (Indicators of Compromise) database.
