@@ -1,5 +1,11 @@
 # Muaddib
 
+[![CI](https://github.com/RichardSlater/muaddib/actions/workflows/ci.yml/badge.svg)](https://github.com/RichardSlater/muaddib/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/RichardSlater/muaddib)](https://goreportcard.com/report/github.com/RichardSlater/muaddib)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/github/go-mod-go-version/RichardSlater/muaddib)](https://go.dev/)
+[![Release](https://img.shields.io/github/v/release/RichardSlater/muaddib)](https://github.com/RichardSlater/muaddib/releases/latest)
+
 Shai-Hallud NPM Worm scanner for GitHub repositories. Scans organization or user repositories for vulnerable npm packages by checking `package.json` and `package-lock.json` files against an IOC (Indicators of Compromise) database.
 
 ## Features
@@ -67,6 +73,9 @@ Muaddib requires a GitHub Personal Access Token to access the GitHub API. Follow
 
 ### Step 2: Securely Store the Token
 
+> [!IMPORTANT]
+> Treat your GitHub token like a password. Keep it secret and secure. While it might be tempting to simply `export GITHUB_TOKEN=your_token_here` in your shell, this can expose the token in shell history or process listings. Instead, consider using a password manager to store and retrieve the token securely (Option B).
+
 #### Option A: Using an env file
 
 Create a `.env` file that is **not committed to version control**:
@@ -76,8 +85,14 @@ Create a `.env` file that is **not committed to version control**:
 touch ~/.muaddib.env
 chmod 600 ~/.muaddib.env
 
-# Add your token with the format GITHUB_TOKEN=github_pat_xxxx
-vi > ~/.muaddib.env
+# Add your token with the format export GITHUB_TOKEN=github_pat_xxxx
+vi ~/.muaddib.env
+```
+
+your `.muaddib.env` file should contain:
+
+```bash
+export GITHUB_TOKEN=github_pat_your_generated_token_here
 ```
 
 Source it when needed:
@@ -297,6 +312,7 @@ The following references were used in building this tool, all credit for detecti
 - [Widespread Supply Chain Compromise Impacting npm Ecosystem](https://www.cisa.gov/news-events/alerts/2025/09/23/widespread-supply-chain-compromise-impacting-npm-ecosystem) by CISA
 - [Post-mortem of Shai-Hulud attack on November 24th, 2025](https://posthog.com/blog/nov-24-shai-hulud-attack-post-mortem) by Oliver Browne (PostHog)
 - [Shai-hulud npm attack: What you need to know](https://www.reversinglabs.com/blog/shai-hulud-worm-npm) by Karlo Zanki (Reversing Labs)
+- [Shai Hulud 2.0: The NPM Supply Chain Attack Returns as an Aggressive Self-Propagating Worm](https://www.upwind.io/feed/shai-hulud-2-npm-supply-chain-worm-attack) by Koby Turjeman
 
 ## License
 
