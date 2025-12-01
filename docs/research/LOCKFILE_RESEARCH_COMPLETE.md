@@ -1,7 +1,7 @@
 # 🔬 Lockfile Format Research - COMPLETE ✅
 
-**Date**: November 30, 2025  
-**Branch**: feat/other-packagemanagers  
+**Date**: November 30, 2025
+**Branch**: feat/other-packagemanagers
 **Status**: Research complete, ready for implementation
 
 ---
@@ -11,7 +11,7 @@
 Successfully researched **5 major package manager lockfile formats** for vulnerability scanning support in Muaddib:
 
 1. ✅ **pnpm-lock.yaml** - Standard YAML, ~5-10% market share, GROWING
-2. ✅ **yarn.lock v1** - Custom format, ~15-20% market share, STABLE  
+2. ✅ **yarn.lock v1** - Custom format, ~15-20% market share, STABLE
 3. ✅ **yarn.lock v2+ Berry** - YAML-like, ~3-5% market share, GROWING
 4. ✅ **bun.lock** - Text format, ~1-2% market share, GROWING FAST
 5. ✅ **npm-shrinkwrap.json** - JSON (identical to package-lock.json), RARE
@@ -22,9 +22,9 @@ Successfully researched **5 major package manager lockfile formats** for vulnera
 
 ### 1. pnpm-lock.yaml (⭐⭐⭐⭐⭐ HIGHEST PRIORITY)
 
-**Format**: Standard YAML  
-**Parsing**: Easy - use `gopkg.in/yaml.v3`  
-**Effort**: LOW (50 lines of code)  
+**Format**: Standard YAML
+**Parsing**: Easy - use `gopkg.in/yaml.v3`
+**Effort**: LOW (50 lines of code)
 **Value**: HIGH (growing adoption, especially in monorepos)
 
 ```yaml
@@ -43,9 +43,9 @@ packages:
 
 ### 2. yarn.lock v1 (⭐⭐⭐⭐ HIGH PRIORITY)
 
-**Format**: Custom plain text  
-**Parsing**: Medium - custom line-by-line parser  
-**Effort**: MEDIUM (100 lines of code)  
+**Format**: Custom plain text
+**Parsing**: Medium - custom line-by-line parser
+**Effort**: MEDIUM (100 lines of code)
 **Value**: HIGH (still widely used despite Yarn v2+)
 
 ```
@@ -65,9 +65,9 @@ express@^4.18.2:
 
 ### 3. yarn.lock v2+ Berry (⭐⭐⭐ MEDIUM PRIORITY)
 
-**Format**: YAML-like (not standard YAML)  
-**Parsing**: Medium-Hard - YAML + custom logic  
-**Effort**: MEDIUM-HIGH (150 lines of code)  
+**Format**: YAML-like (not standard YAML)
+**Parsing**: Medium-Hard - YAML + custom logic
+**Effort**: MEDIUM-HIGH (150 lines of code)
 **Value**: MEDIUM (smaller but growing user base)
 
 ```yaml
@@ -86,9 +86,9 @@ __metadata:
 
 ### 4. bun.lock (⭐⭐ MEDIUM-LOW PRIORITY)
 
-**Format**: Text (similar to Yarn Berry)  
-**Parsing**: Medium - similar to Yarn v2+  
-**Effort**: MEDIUM (150 lines of code)  
+**Format**: Text (similar to Yarn Berry)
+**Parsing**: Medium - similar to Yarn v2+
+**Effort**: MEDIUM (150 lines of code)
 **Value**: MEDIUM-LOW (small but fast-growing)
 
 **Note**: Binary `bun.lockb` is DEPRECATED - DO NOT SUPPORT
@@ -100,9 +100,9 @@ __metadata:
 
 ### 5. npm-shrinkwrap.json (✅ ALREADY SUPPORTED)
 
-**Format**: JSON (identical to package-lock.json)  
-**Parsing**: Reuse existing parser  
-**Effort**: NONE (already works)  
+**Format**: JSON (identical to package-lock.json)
+**Parsing**: Reuse existing parser
+**Effort**: NONE (already works)
 **Value**: LOW (rarely used)
 
 **Action needed**: Just ensure it's detected and tested
@@ -136,7 +136,7 @@ Based on npm registry data and community surveys:
 ✅ Document in README
 ```
 
-**Why first**: 
+**Why first**:
 - Lowest effort
 - High value
 - Builds confidence with YAML parsing for future formats
@@ -200,9 +200,9 @@ All formats parse in **<20ms** for 500 packages:
 
 ### Memory Usage
 
-Typical lockfile: 100-500 KB  
-Parser memory overhead: ~2x file size  
-Peak memory: ~1 MB per lockfile  
+Typical lockfile: 100-500 KB
+Parser memory overhead: ~2x file size
+Peak memory: ~1 MB per lockfile
 
 **Conclusion**: Memory is NOT a concern
 
@@ -214,17 +214,17 @@ Peak memory: ~1 MB per lockfile
 ```go
 func DetectLockfileFormat(content []byte) string {
     header := string(content[:min(500, len(content))])
-    
+
     // pnpm (most reliable signature)
     if strings.Contains(header, "lockfileVersion:") {
         return "pnpm-lock.yaml"
     }
-    
+
     // Yarn v1 (has specific header)
     if strings.Contains(header, "# yarn lockfile v1") {
         return "yarn.lock.v1"
     }
-    
+
     // Yarn v2+ and Bun (both use __metadata)
     if strings.Contains(header, "__metadata:") {
         // Check for @npm: protocol (Berry/Bun specific)
@@ -233,12 +233,12 @@ func DetectLockfileFormat(content []byte) string {
         }
         return "yarn.lock.v2"
     }
-    
+
     // npm/shrinkwrap (JSON)
     if strings.HasPrefix(strings.TrimSpace(header), "{") {
         return "package-lock.json"
     }
-    
+
     return "unknown"
 }
 ```
@@ -257,7 +257,7 @@ func ParsePnpmLock(data []byte) ([]Package, error) {
     if err := yaml.Unmarshal(data, &lock); err != nil {
         return nil, fmt.Errorf("invalid pnpm-lock.yaml: %w", err)
     }
-    
+
     packages := make([]Package, 0, len(lock.Packages))
     for nameVersion := range lock.Packages {
         name, version := splitPnpmPackageKey(nameVersion)
@@ -268,7 +268,7 @@ func ParsePnpmLock(data []byte) ([]Package, error) {
             })
         }
     }
-    
+
     return packages, nil
 }
 
@@ -297,22 +297,22 @@ func splitPnpmPackageKey(key string) (name, version string) {
 func ParseYarnLockV1(content string) ([]Package, error) {
     packages := make([]Package, 0)
     lines := strings.Split(content, "\n")
-    
+
     var currentPackage string
-    
+
     for _, line := range lines {
         // Package entry: no leading whitespace, ends with ':'
         if !strings.HasPrefix(line, " ") && strings.HasSuffix(line, ":") {
             pkgRange := strings.TrimSuffix(line, ":")
-            
+
             // Handle multi-range: "pkg@^1.0.0, pkg@^2.0.0:"
             if idx := strings.Index(pkgRange, ","); idx > 0 {
                 pkgRange = pkgRange[:idx]
             }
-            
+
             // Remove quotes
             pkgRange = strings.Trim(pkgRange, `"`)
-            
+
             // Extract package name from "name@range"
             if idx := strings.LastIndex(pkgRange, "@"); idx > 0 {
                 currentPackage = pkgRange[:idx]
@@ -320,7 +320,7 @@ func ParseYarnLockV1(content string) ([]Package, error) {
         } else if strings.HasPrefix(line, "  version ") {
             // Extract version: '  version "4.21.2"'
             version := strings.Trim(strings.TrimPrefix(line, "  version "), `"`)
-            
+
             if currentPackage != "" && version != "" {
                 packages = append(packages, Package{
                     Name:    currentPackage,
@@ -330,7 +330,7 @@ func ParseYarnLockV1(content string) ([]Package, error) {
             }
         }
     }
-    
+
     return packages, nil
 }
 ```
@@ -439,7 +439,6 @@ Before implementation:
 
 ---
 
-**Research completed**: November 30, 2025  
-**Ready for implementation**: YES ✅  
+**Research completed**: November 30, 2025
+**Ready for implementation**: YES ✅
 **Estimated implementation time**: 4-7 days (Phase 1+2+3)
-

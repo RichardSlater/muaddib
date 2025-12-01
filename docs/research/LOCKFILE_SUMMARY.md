@@ -5,7 +5,7 @@
 **Recommended Implementation Order:**
 
 1. ✅ **pnpm-lock.yaml** - Easy (standard YAML), growing adoption, HIGH ROI
-2. ✅ **yarn.lock v1** - Medium effort, large user base, HIGH ROI  
+2. ✅ **yarn.lock v1** - Medium effort, large user base, HIGH ROI
 3. ⏸️ **yarn.lock v2+ Berry** - Medium-hard, smaller base, MEDIUM ROI
 4. ⏸️ **bun.lock (text)** - Medium, growing fast but small, MEDIUM ROI
 5. ✅ **npm-shrinkwrap.json** - Already supported (same as package-lock.json)
@@ -24,7 +24,7 @@ packages:
     dependencies:
       accepts: 1.3.8
 ```
-- **Parser**: `gopkg.in/yaml.v3` 
+- **Parser**: `gopkg.in/yaml.v3`
 - **Extract**: Split key on `@` → name + version
 - **Lines of code**: ~50
 - **Complexity**: 1/10
@@ -107,7 +107,7 @@ __metadata:
 ```go
 func DetectLockfileFormat(content []byte) string {
     header := string(content[:min(500, len(content))])
-    
+
     if strings.Contains(header, "lockfileVersion:") {
         return "pnpm-lock.yaml"
     }
@@ -135,7 +135,7 @@ type PnpmLock struct {
 func ParsePnpmLock(data []byte) ([]Package, error) {
     var lock PnpmLock
     yaml.Unmarshal(data, &lock)
-    
+
     var pkgs []Package
     for nameVersion := range lock.Packages {
         name, version := splitPackageKey(nameVersion)
@@ -164,7 +164,7 @@ func splitPackageKey(key string) (name, version string) {
 func ParseYarnLockV1(content string) ([]Package, error) {
     var pkgs []Package
     lines := strings.Split(content, "\n")
-    
+
     var currentPkg string
     for _, line := range lines {
         // Package entry: no leading space, ends with ':'
@@ -197,7 +197,7 @@ func ParseYarnLockV1(content string) ([]Package, error) {
 go get gopkg.in/yaml.v3
 ```
 
-**Only needed for**: pnpm-lock.yaml, yarn.lock v2+, bun.lock  
+**Only needed for**: pnpm-lock.yaml, yarn.lock v2+, bun.lock
 **Not needed for**: yarn.lock v1 (custom parser uses stdlib)
 
 ---

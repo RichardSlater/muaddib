@@ -234,10 +234,10 @@ func cleanVersion(version string) string {
 
 // PnpmLockYAML represents the structure of a pnpm-lock.yaml file (v6+)
 type PnpmLockYAML struct {
-	LockfileVersion string                    `yaml:"lockfileVersion"`
-	Packages        map[string]PnpmLockEntry  `yaml:"packages"`
-	Dependencies    map[string]interface{}    `yaml:"dependencies"`    // Optional, for reference
-	DevDependencies map[string]interface{}    `yaml:"devDependencies"` // Optional, for reference
+	LockfileVersion string                   `yaml:"lockfileVersion"`
+	Packages        map[string]PnpmLockEntry `yaml:"packages"`
+	Dependencies    map[string]interface{}   `yaml:"dependencies"`    // Optional, for reference
+	DevDependencies map[string]interface{}   `yaml:"devDependencies"` // Optional, for reference
 }
 
 // PnpmLockEntry represents an entry in the pnpm packages map
@@ -298,10 +298,13 @@ func ParsePnpmLock(content string, includeDev bool) ([]*Package, error) {
 
 // parsePnpmPackageKey extracts package name and version from a pnpm package key
 // Examples:
-//   /pkg/1.0.0 -> (pkg, 1.0.0)
-//   /@scope/pkg@1.0.0 -> (@scope/pkg, 1.0.0)
-//   /pkg@1.0.0 -> (pkg, 1.0.0)
-//   /@scope/pkg/1.0.0 -> (@scope/pkg, 1.0.0)
+//
+//	/pkg/1.0.0 -> (pkg, 1.0.0)
+//	/@scope/pkg@1.0.0 -> (@scope/pkg, 1.0.0)
+//	/pkg@1.0.0 -> (pkg, 1.0.0)
+//	/@scope/pkg/1.0.0 -> (@scope/pkg, 1.0.0)
+//	/pkg@1.0.0(peer@2.0.0) -> (pkg, 1.0.0)  // peer dep suffix stripped
+//	/pkg@1.0.0_peer@2.0.0 -> (pkg, 1.0.0)   // peer dep suffix stripped
 func parsePnpmPackageKey(key string) (name, version string) {
 	// Remove leading slash
 	key = strings.TrimPrefix(key, "/")
@@ -320,12 +323,12 @@ func parsePnpmPackageKey(key string) (name, version string) {
 		// Check if version is after @ or /
 		if len(parts) == 3 {
 			// Format: @scope/pkg@version
-			return scopedName, parts[2]
+			return scopedName, stripPnpmPeerDepSuffix(parts[2])
 		}
 
 		// Format: @scope/pkg/version - split on last /
 		if idx := strings.LastIndex(scopedName, "/"); idx > 0 {
-			return scopedName[:idx], scopedName[idx+1:]
+			return scopedName[:idx], stripPnpmPeerDepSuffix(scopedName[idx+1:])
 		}
 
 		return "", ""
@@ -335,20 +338,57 @@ func parsePnpmPackageKey(key string) (name, version string) {
 	if strings.Contains(key, "@") {
 		parts := strings.SplitN(key, "@", 2)
 		if len(parts) == 2 {
-			return parts[0], parts[1]
+			return parts[0], stripPnpmPeerDepSuffix(parts[1])
 		}
 	}
 
 	// Format: pkg/version
 	if idx := strings.LastIndex(key, "/"); idx > 0 {
-		return key[:idx], key[idx+1:]
+		return key[:idx], stripPnpmPeerDepSuffix(key[idx+1:])
 	}
 
 	return "", ""
 }
 
-// ParseYarnLock parses a yarn.lock v1 file and returns the list of packages
-func ParseYarnLock(content string, includeDev bool) ([]*Package, error) {
+// stripPnpmPeerDepSuffix removes peer dependency suffixes from pnpm versions.
+// pnpm lockfiles can include peer dependency info in the version string:
+//   - Parentheses format: 1.0.0(peer@2.0.0) or 1.0.0(@scope/peer@2.0.0)
+//   - Underscore format: 1.0.0_peer@2.0.0 or 1.0.0_@scope/peer@2.0.0
+func stripPnpmPeerDepSuffix(version string) string {
+	// Strip parentheses suffix: 1.0.0(peer@2.0.0) -> 1.0.0
+	if idx := strings.Index(version, "("); idx > 0 {
+		version = version[:idx]
+	}
+
+	// Strip underscore suffix: 1.0.0_peer@2.0.0 -> 1.0.0
+	// Be careful: version numbers can contain underscores in pre-release tags
+	// but pnpm peer dep format always has @ after underscore
+	if idx := strings.Index(version, "_"); idx > 0 {
+		// Check if this looks like a peer dep suffix (has @ after _)
+		suffix := version[idx+1:]
+		if strings.Contains(suffix, "@") {
+			version = version[:idx]
+		}
+	}
+
+	return version
+}
+
+// ParseYarnLock parses a yarn.lock v1 file and returns the list of packages.
+//
+// Note: The includeDev parameter is accepted for API consistency but is not used.
+// Yarn v1 lockfiles do not distinguish between production and dev dependencies -
+// all packages are listed together without a "dev" marker. The --skip-dev flag
+// has no effect on yarn.lock files. All packages are marked as IsDev: false.
+//
+// Yarn Berry (v2+) lockfiles are NOT supported and will return an error with
+// a descriptive message. Berry format can be detected by the __metadata: header.
+func ParseYarnLock(content string, _ bool) ([]*Package, error) {
+	// Check for Yarn Berry (v2+) format which is not supported
+	if isYarnBerryFormat(content) {
+		return nil, fmt.Errorf("yarn.lock appears to be Yarn Berry (v2+) format which is not yet supported; only Yarn Classic (v1) format is supported")
+	}
+
 	var packages []*Package
 	seen := make(map[string]bool)
 
@@ -384,19 +424,22 @@ func ParseYarnLock(content string, includeDev bool) ([]*Package, error) {
 				}
 			}
 
-			// Parse new package names (can be multiple)
+			// Parse new package names (can be multiple version ranges for same package)
+			// e.g., "pkg@^1.0.0, pkg@~1.0.5:" - both resolve to the same version
 			// Remove trailing colon
 			namesStr := strings.TrimSuffix(trimmed, ":")
 			// Split by comma for multiple ranges
 			nameRanges := strings.Split(namesStr, ",")
 			currentNames = []string{}
+			seenNames := make(map[string]bool)
 			for _, nr := range nameRanges {
 				nr = strings.TrimSpace(nr)
 				// Remove quotes
 				nr = strings.Trim(nr, "\"'")
 				// Extract package name (before @)
 				name := extractYarnPackageName(nr)
-				if name != "" {
+				if name != "" && !seenNames[name] {
+					seenNames[name] = true
 					currentNames = append(currentNames, name)
 				}
 			}
@@ -436,9 +479,10 @@ func ParseYarnLock(content string, includeDev bool) ([]*Package, error) {
 
 // extractYarnPackageName extracts the package name from a yarn.lock entry
 // Examples:
-//   "pkg@^1.0.0" -> pkg
-//   "@scope/pkg@^1.0.0" -> @scope/pkg
-//   "pkg@npm:other@1.0.0" -> pkg
+//
+//	"pkg@^1.0.0" -> pkg
+//	"@scope/pkg@^1.0.0" -> @scope/pkg
+//	"pkg@npm:other@1.0.0" -> pkg
 func extractYarnPackageName(entry string) string {
 	// Handle npm: aliases
 	if strings.Contains(entry, "@npm:") {
@@ -460,4 +504,21 @@ func extractYarnPackageName(entry string) string {
 	// Regular package
 	parts := strings.SplitN(entry, "@", 2)
 	return parts[0]
+}
+
+// isYarnBerryFormat detects if a yarn.lock file is in Yarn Berry (v2+) format.
+// Berry format has a __metadata: section at the top and uses different syntax.
+func isYarnBerryFormat(content string) bool {
+	// Check for __metadata: header which is unique to Yarn Berry
+	if strings.Contains(content, "__metadata:") {
+		return true
+	}
+
+	// Check for Berry-style package declarations with @npm: prefix
+	// e.g., "pkg@npm:^1.0.0" instead of just "pkg@^1.0.0"
+	if strings.Contains(content, "@npm:") {
+		return true
+	}
+
+	return false
 }

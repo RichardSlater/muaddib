@@ -153,7 +153,7 @@ packages:
 ```
 
 ### Key Characteristics
-- **Two sections**: 
+- **Two sections**:
   - `importers`: Direct dependencies with specifiers
   - `packages`: All resolved packages (transitive)
 - **Package identifier**: `package-name@version` in packages section
@@ -352,12 +352,12 @@ func ParsePnpmLock(data []byte) ([]Package, error) {
     if err := yaml.Unmarshal(data, &lock); err != nil {
         return nil, err
     }
-    
+
     var packages []Package
     for nameVersion := range lock.Packages {
         parts := strings.Split(nameVersion, "@")
         var name, version string
-        
+
         if strings.HasPrefix(nameVersion, "@") {
             // Scoped package: @scope/name@version
             if len(parts) >= 3 {
@@ -371,7 +371,7 @@ func ParsePnpmLock(data []byte) ([]Package, error) {
                 version = parts[1]
             }
         }
-        
+
         if name != "" && version != "" {
             packages = append(packages, Package{Name: name, Version: version})
         }
@@ -386,10 +386,10 @@ func ParsePnpmLock(data []byte) ([]Package, error) {
 func ParseYarnLockV1(data string) ([]Package, error) {
     var packages []Package
     lines := strings.Split(data, "\n")
-    
+
     var currentPackage string
     var currentVersion string
-    
+
     for _, line := range lines {
         // Package declaration (no leading whitespace, ends with :)
         if !strings.HasPrefix(line, " ") && strings.HasSuffix(line, ":") {
@@ -399,7 +399,7 @@ func ParseYarnLockV1(data string) ([]Package, error) {
             if idx := strings.Index(pkgLine, ","); idx > 0 {
                 pkgLine = pkgLine[:idx]
             }
-            
+
             // Extract name from "package@range"
             if idx := strings.LastIndex(pkgLine, "@"); idx > 0 {
                 currentPackage = pkgLine[:idx]
@@ -408,7 +408,7 @@ func ParseYarnLockV1(data string) ([]Package, error) {
         } else if strings.HasPrefix(line, "  version ") {
             // Extract version
             currentVersion = strings.Trim(strings.TrimPrefix(line, "  version "), `"`)
-            
+
             if currentPackage != "" && currentVersion != "" {
                 packages = append(packages, Package{
                     Name: currentPackage,
@@ -417,7 +417,7 @@ func ParseYarnLockV1(data string) ([]Package, error) {
             }
         }
     }
-    
+
     return packages, nil
 }
 ```
@@ -470,4 +470,3 @@ Based on npm trends and community adoption:
 4. Consider yarn v2+ and bun.lock based on user demand
 5. Document supported formats in README
 6. Add format detection to github/contents.go
-

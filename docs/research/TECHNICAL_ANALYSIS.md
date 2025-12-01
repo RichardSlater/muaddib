@@ -193,12 +193,12 @@ func ParseLockfile(data []byte, format string) ([]Package, error) {
     if err != nil {
         return nil, fmt.Errorf("failed to parse %s: %w", format, err)
     }
-    
+
     // Validation
     if len(packages) == 0 {
         return nil, fmt.Errorf("no packages found in %s", format)
     }
-    
+
     // Filter invalid entries
     valid := make([]Package, 0, len(packages))
     for _, pkg := range packages {
@@ -206,7 +206,7 @@ func ParseLockfile(data []byte, format string) ([]Package, error) {
             valid = append(valid, pkg)
         }
     }
-    
+
     return valid, nil
 }
 
@@ -215,18 +215,18 @@ func isValidPackage(pkg Package) bool {
     if strings.Contains(pkg.Name, "@workspace:") {
         return false
     }
-    
+
     // Skip git/tarball
-    if strings.Contains(pkg.Version, "github.com") || 
+    if strings.Contains(pkg.Version, "github.com") ||
        strings.Contains(pkg.Version, "http") {
         return false
     }
-    
+
     // Must have valid semver
     if !semverRegex.MatchString(pkg.Version) {
         return false
     }
-    
+
     return true
 }
 ```
@@ -265,7 +265,7 @@ scanner/parser.go
   - ParseYarnLockV2()
   - ParseBunLock()
   - DetectLockfileFormat()  ← Auto-detect
-  
+
   ↓ Returns: []Package (uniform structure)
 
 scanner/matcher.go
@@ -282,35 +282,35 @@ scanner/matcher.go
 ```go
 func DetectLockfileFormat(content []byte) string {
     str := string(content)
-    
+
     // Check first 500 bytes for signatures
     header := str
     if len(str) > 500 {
         header = str[:500]
     }
-    
+
     // pnpm
     if strings.Contains(header, "lockfileVersion:") {
         return "pnpm-lock.yaml"
     }
-    
+
     // Yarn v1
     if strings.Contains(header, "# yarn lockfile v1") {
         return "yarn.lock.v1"
     }
-    
+
     // Yarn v2+
     if strings.Contains(header, "__metadata:") {
         return "yarn.lock.v2"
     }
-    
+
     // Bun
     if strings.Contains(header, "# bun lockfile") ||
-       (strings.Contains(header, "__metadata:") && 
+       (strings.Contains(header, "__metadata:") &&
         strings.Contains(str, "@npm:")) {
         return "bun.lock"
     }
-    
+
     // npm/shrinkwrap (JSON)
     if strings.HasPrefix(strings.TrimSpace(header), "{") {
         // Try to parse as JSON
@@ -321,7 +321,7 @@ func DetectLockfileFormat(content []byte) string {
             }
         }
     }
-    
+
     return "unknown"
 }
 ```
@@ -467,4 +467,3 @@ go test -bench=. -benchmem ./internal/scanner/
 - Yarn v2+ Berry support
 - Bun.lock support
 - Based on user feedback
-
