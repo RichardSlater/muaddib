@@ -236,8 +236,6 @@ func cleanVersion(version string) string {
 type PnpmLockYAML struct {
 	LockfileVersion string                   `yaml:"lockfileVersion"`
 	Packages        map[string]PnpmLockEntry `yaml:"packages"`
-	Dependencies    map[string]interface{}   `yaml:"dependencies"`    // Optional, for reference
-	DevDependencies map[string]interface{}   `yaml:"devDependencies"` // Optional, for reference
 }
 
 // PnpmLockEntry represents an entry in the pnpm packages map
@@ -312,8 +310,9 @@ func parsePnpmPackageKey(key string) (name, version string) {
 	// Handle scoped packages
 	if strings.HasPrefix(key, "@") {
 		// Find the @ that separates name from version
-		// Format: @scope/pkg@version or @scope/pkg/version
-		parts := strings.SplitN(key, "@", 3) // Split into ["", "scope/pkg", "version"] or ["", "scope/pkg/version"]
+		// For @scope/pkg@version, this produces ["", "scope/pkg", "version"]
+		// For @scope/pkg/version, this produces ["", "scope/pkg/version"]
+		parts := strings.SplitN(key, "@", 3)
 		if len(parts) < 2 {
 			return "", ""
 		}
@@ -326,9 +325,9 @@ func parsePnpmPackageKey(key string) (name, version string) {
 			return scopedName, stripPnpmPeerDepSuffix(parts[2])
 		}
 
-		// Format: @scope/pkg/version - split on last /
-		if idx := strings.LastIndex(scopedName, "/"); idx > 0 {
-			return scopedName[:idx], stripPnpmPeerDepSuffix(scopedName[idx+1:])
+		// Format: @scope/pkg/version - split the original key on last / to get version
+		if idx := strings.LastIndex(key, "/"); idx > 0 {
+			return key[:idx], stripPnpmPeerDepSuffix(key[idx+1:])
 		}
 
 		return "", ""
@@ -383,19 +382,106 @@ func stripPnpmPeerDepSuffix(version string) string {
 //
 // Yarn Berry (v2+) lockfiles are NOT supported and will return an error with
 // a descriptive message. Berry format can be detected by the __metadata: header.
+// yarnLockParser holds state for parsing a yarn.lock file
+type yarnLockParser struct {
+	packages     []*Package
+	seen         map[string]bool
+	currentNames []string
+	currentVer   string
+	inEntry      bool
+}
+
+// newYarnLockParser creates a new yarn.lock parser
+func newYarnLockParser() *yarnLockParser {
+	return &yarnLockParser{
+		seen: make(map[string]bool),
+	}
+}
+
+// saveCurrentEntry saves the current package entry if valid
+func (p *yarnLockParser) saveCurrentEntry() {
+	if !p.inEntry || p.currentVer == "" || len(p.currentNames) == 0 {
+		return
+	}
+	for _, name := range p.currentNames {
+		pkgKey := name + "@" + p.currentVer
+		if p.seen[pkgKey] {
+			continue
+		}
+		p.seen[pkgKey] = true
+		p.packages = append(p.packages, &Package{
+			Name:    name,
+			Version: p.currentVer,
+			IsDev:   false, // yarn.lock v1 doesn't track dev vs prod
+			Source:  "transitive",
+		})
+	}
+}
+
+// parseDeclarationLine parses a package declaration line and returns the unique package names
+// Format: "pkg@^1.0.0", "pkg@~2.0.0":
+func parseYarnDeclarationLine(trimmed string) []string {
+	// Remove trailing colon
+	namesStr := strings.TrimSuffix(trimmed, ":")
+	// Split by comma for multiple ranges
+	nameRanges := strings.Split(namesStr, ",")
+
+	var names []string
+	seenNames := make(map[string]bool)
+
+	for _, nr := range nameRanges {
+		nr = strings.TrimSpace(nr)
+		// Remove surrounding quotes (double or single)
+		nr = trimSurroundingQuotes(nr)
+		// Extract package name (before @)
+		name := extractYarnPackageName(nr)
+		if name != "" && !seenNames[name] {
+			seenNames[name] = true
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// trimSurroundingQuotes removes matching surrounding quotes from a string
+func trimSurroundingQuotes(s string) string {
+	if strings.HasPrefix(s, "\"") && strings.HasSuffix(s, "\"") {
+		return strings.TrimPrefix(strings.TrimSuffix(s, "\""), "\"")
+	}
+	if strings.HasPrefix(s, "'") && strings.HasSuffix(s, "'") {
+		return strings.TrimPrefix(strings.TrimSuffix(s, "'"), "'")
+	}
+	return s
+}
+
+// isYarnDeclarationLine checks if a line is a package declaration (not indented, ends with :)
+func isYarnDeclarationLine(line, trimmed string) bool {
+	return !strings.HasPrefix(line, " ") &&
+		!strings.HasPrefix(line, "\t") &&
+		strings.HasSuffix(trimmed, ":")
+}
+
+// parseYarnVersionLine extracts version from a "version X" line
+func parseYarnVersionLine(trimmed string) string {
+	// Format: version "1.0.0"
+	parts := strings.SplitN(trimmed, " ", 2)
+	if len(parts) == 2 {
+		return strings.Trim(parts[1], "\"'")
+	}
+	return ""
+}
+
+// ParseYarnLock parses a yarn.lock v1 file and returns the list of packages.
+// Note: The includeDev parameter is unused because yarn.lock v1 format doesn't
+// distinguish between dev and production dependencies.
 func ParseYarnLock(content string, _ bool) ([]*Package, error) {
 	// Check for Yarn Berry (v2+) format which is not supported
 	if isYarnBerryFormat(content) {
 		return nil, fmt.Errorf("yarn.lock appears to be Yarn Berry (v2+) format which is not yet supported; only Yarn Classic (v1) format is supported")
 	}
 
-	var packages []*Package
-	seen := make(map[string]bool)
-
+	p := newYarnLockParser()
 	lines := strings.Split(content, "\n")
-	var currentNames []string
-	var currentVersion string
-	inEntry := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -405,76 +491,29 @@ func ParseYarnLock(content string, _ bool) ([]*Package, error) {
 			continue
 		}
 
-		// Check if this is a package declaration line (starts with package name)
-		// Format: "pkg@^1.0.0", "pkg@~2.0.0":
-		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.HasSuffix(trimmed, ":") {
-			// Save previous entry if exists
-			if inEntry && currentVersion != "" && len(currentNames) > 0 {
-				for _, name := range currentNames {
-					pkgKey := name + "@" + currentVersion
-					if !seen[pkgKey] {
-						seen[pkgKey] = true
-						packages = append(packages, &Package{
-							Name:    name,
-							Version: currentVersion,
-							IsDev:   false, // yarn.lock v1 doesn't track dev vs prod
-							Source:  "transitive",
-						})
-					}
-				}
-			}
+		// Check if this is a package declaration line
+		if isYarnDeclarationLine(line, trimmed) {
+			// Save previous entry before starting new one
+			p.saveCurrentEntry()
 
 			// Parse new package names (can be multiple version ranges for same package)
 			// e.g., "pkg@^1.0.0, pkg@~1.0.5:" - both resolve to the same version
-			// Remove trailing colon
-			namesStr := strings.TrimSuffix(trimmed, ":")
-			// Split by comma for multiple ranges
-			nameRanges := strings.Split(namesStr, ",")
-			currentNames = []string{}
-			seenNames := make(map[string]bool)
-			for _, nr := range nameRanges {
-				nr = strings.TrimSpace(nr)
-				// Remove quotes
-				nr = strings.Trim(nr, "\"'")
-				// Extract package name (before @)
-				name := extractYarnPackageName(nr)
-				if name != "" && !seenNames[name] {
-					seenNames[name] = true
-					currentNames = append(currentNames, name)
-				}
-			}
-			currentVersion = ""
-			inEntry = true
+			p.currentNames = parseYarnDeclarationLine(trimmed)
+			p.currentVer = ""
+			p.inEntry = true
 			continue
 		}
 
 		// Parse version field
-		if inEntry && strings.HasPrefix(trimmed, "version") {
-			parts := strings.SplitN(trimmed, " ", 2)
-			if len(parts) == 2 {
-				version := strings.Trim(parts[1], "\"'")
-				currentVersion = version
-			}
+		if p.inEntry && strings.HasPrefix(trimmed, "version") {
+			p.currentVer = parseYarnVersionLine(trimmed)
 		}
 	}
 
 	// Save last entry
-	if inEntry && currentVersion != "" && len(currentNames) > 0 {
-		for _, name := range currentNames {
-			pkgKey := name + "@" + currentVersion
-			if !seen[pkgKey] {
-				seen[pkgKey] = true
-				packages = append(packages, &Package{
-					Name:    name,
-					Version: currentVersion,
-					IsDev:   false,
-					Source:  "transitive",
-				})
-			}
-		}
-	}
+	p.saveCurrentEntry()
 
-	return packages, nil
+	return p.packages, nil
 }
 
 // extractYarnPackageName extracts the package name from a yarn.lock entry

@@ -484,18 +484,26 @@ packages:
 		t.Fatalf("expected 2 packages (excluding dev), got %d", len(packages))
 	}
 
-	// Check package names and versions
-	found := make(map[string]string)
+	// Check package names, versions, and IsDev field
 	for _, pkg := range packages {
-		found[pkg.Name] = pkg.Version
-	}
-
-	if found["test-muaddib-pkg-a"] != "1.0.0" {
-		t.Errorf("expected test-muaddib-pkg-a@1.0.0, got %s", found["test-muaddib-pkg-a"])
-	}
-
-	if found["@test-muaddib/scoped"] != "2.0.0" {
-		t.Errorf("expected @test-muaddib/scoped@2.0.0, got %s", found["@test-muaddib/scoped"])
+		switch pkg.Name {
+		case "test-muaddib-pkg-a":
+			if pkg.Version != "1.0.0" {
+				t.Errorf("expected test-muaddib-pkg-a@1.0.0, got %s", pkg.Version)
+			}
+			if pkg.IsDev {
+				t.Errorf("expected test-muaddib-pkg-a.IsDev to be false")
+			}
+		case "@test-muaddib/scoped":
+			if pkg.Version != "2.0.0" {
+				t.Errorf("expected @test-muaddib/scoped@2.0.0, got %s", pkg.Version)
+			}
+			if pkg.IsDev {
+				t.Errorf("expected @test-muaddib/scoped.IsDev to be false")
+			}
+		default:
+			t.Errorf("unexpected package: %s", pkg.Name)
+		}
 	}
 }
 
