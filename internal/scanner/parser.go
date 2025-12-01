@@ -3,9 +3,8 @@ package scanner
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-
 	"gopkg.in/yaml.v3"
+	"strings"
 )
 
 // Package represents a package with name and version
@@ -472,9 +471,9 @@ func parseYarnVersionLine(trimmed string) string {
 }
 
 // ParseYarnLock parses a yarn.lock v1 file and returns the list of packages.
-// Note: The includeDev parameter is unused because yarn.lock v1 format doesn't
-// distinguish between dev and production dependencies.
-func ParseYarnLock(content string, _ bool) ([]*Package, error) {
+func ParseYarnLock(content string, includeDev bool) ([]*Package, error) {
+	// includeDev is unused: yarn.lock v1 does not distinguish dev dependencies
+	_ = includeDev
 	// Check for Yarn Berry (v2+) format which is not supported
 	if isYarnBerryFormat(content) {
 		return nil, fmt.Errorf("yarn.lock appears to be Yarn Berry (v2+) format which is not yet supported; only Yarn Classic (v1) format is supported")
@@ -545,6 +544,27 @@ func extractYarnPackageName(entry string) string {
 	return parts[0]
 }
 
+// isBerryVersionRangeStart checks if a character indicates the start of a version range
+// (used to distinguish Berry format from Yarn v1 npm aliases)
+func isBerryVersionRangeStart(c byte) bool {
+	return c == '^' || c == '~' || c == '>' || c == '<' || c == '=' || (c >= '0' && c <= '9')
+}
+
+// hasBerryStyleNpmPrefix checks if a declaration line has Berry-style @npm: prefix
+// Berry format: "pkg@npm:^1.0.0:" where @npm: comes before the version range
+// Yarn v1 aliases: "alias@npm:actual-pkg@version:" where @npm: is followed by a package name
+func hasBerryStyleNpmPrefix(trimmed string) bool {
+	npmIdx := strings.Index(trimmed, "@npm:")
+	if npmIdx < 0 {
+		return false
+	}
+	afterNpm := trimmed[npmIdx+5:] // After "@npm:"
+	if len(afterNpm) == 0 {
+		return false
+	}
+	return isBerryVersionRangeStart(afterNpm[0])
+}
+
 // isYarnBerryFormat detects if a yarn.lock file is in Yarn Berry (v2+) format.
 // Berry format has a __metadata: section at the top and uses different syntax.
 func isYarnBerryFormat(content string) bool {
@@ -553,10 +573,21 @@ func isYarnBerryFormat(content string) bool {
 		return true
 	}
 
-	// Check for Berry-style package declarations with @npm: prefix
-	// e.g., "pkg@npm:^1.0.0" instead of just "pkg@^1.0.0"
-	if strings.Contains(content, "@npm:") {
-		return true
+	// Check for Berry-style package declarations with @npm: prefix in declaration lines
+	// e.g., "pkg@npm:^1.0.0:" instead of just "pkg@^1.0.0:"
+	// Note: @npm: can appear in Yarn v1 for npm aliases (pkg@npm:other@1.0.0),
+	// so we only check lines ending with ':' that have the Berry pattern
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Skip comments and empty lines
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// Check declaration lines (ending with ':') for Berry-style @npm: prefix
+		if strings.HasSuffix(trimmed, ":") && hasBerryStyleNpmPrefix(trimmed) {
+			return true
+		}
 	}
 
 	return false

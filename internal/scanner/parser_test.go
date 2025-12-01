@@ -822,6 +822,15 @@ test-muaddib-pkg@^1.0.0:
 `,
 			expected: true,
 		},
+		{
+			name: "yarn v1 with npm alias - not Berry",
+			content: `# yarn lockfile v1
+
+alias-pkg@npm:actual-pkg@^1.0.0:
+  version "1.0.0"
+`,
+			expected: false,
+		},
 	}
 
 	for _, tc := range testCases {

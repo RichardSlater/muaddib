@@ -4,6 +4,10 @@
 
 Muaddib is a Go CLI tool that scans GitHub organizations/users for npm packages affected by the Shai-Hulud supply chain attack. It fetches package manifest and lock files via the GitHub API and matches dependencies against an IOC (Indicators of Compromise) database. It also detects malicious GitHub Actions workflows created by the worm.
 
+## Important Considerations
+
+- Under no circumstances should you disable GPG signing, as it is critical for maintaining the security and integrity of the codebase. This means that all commits should have `-S` specified, if signing fails stop and inform the user who will be able to fix it.
+
 ## Supported Package Managers
 
 - **npm**: `package.json`, `package-lock.json`, `npm-shrinkwrap.json`
